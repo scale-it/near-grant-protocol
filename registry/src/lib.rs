@@ -1,6 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{UnorderedSet};
+use near_sdk::collections::LookupMap;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use storage::{Status, StorageKey};
 
 pub mod storage;
 
@@ -9,26 +10,17 @@ pub mod storage;
 pub struct Contract {
     /// DAO
     pub authority: AccountId,
-    pub whitelist: UnorderedSet<AccountId>,
-    pub blacklist: UnorderedSet<AccountId>,
+    pub service_providers: LookupMap<AccountId, Status>,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(
-        authority: AccountId,
-        whitelist: Vec<AccountId>,
-        banned: Vec<AccountId>,
-    ) -> Self {
-        let mut contract = Self {
+    pub fn new(authority: AccountId) -> Self {
+        Self {
             authority,
-            whitelist: UnorderedSet::new(StorageKey::Whitelist)
-            blacklist: UnorderedSet::new(StorageKey::Blacklist),
-        };
-        contract._whitelist_accounts(&whitelist);
-        contract._blacklist_accounts(&blacklist);
-        contract
+            service_providers: LookupMap::new(StorageKey::ServiceProviders),
+        }
     }
 
     //
@@ -36,23 +28,23 @@ impl Contract {
     //
 
     pub fn is_whitelisted(&self, account: AccountId) -> bool {
-        self.whitelist.contains(&account)
+        match self.service_providers.get(&account) {
+            Some(Status::Whitelisted) => true,
+            _ => false,
+        }
     }
 
     pub fn is_blacklisted(&self, account: AccountId) -> bool {
-        self.blacklist.contains(&account)
+        match self.service_providers.get(&account) {
+            Some(Status::Blacklisted) => true,
+            _ => false,
+        }
     }
 
     /// Returns the account status, either `Whitelisted`, `Blacklisted`.
     /// Returns None if the account doesnt have a status.
-    pub fn account_status(&self, account: AccountId) -> Option<AccountFlag> {
-        if self.whitelist.contains(account) {
-            return Some(AccountFlag::Whitelisted)
-        }
-        if self.blacklist.contains(account) {
-            return Some(AccountFlag::Blacklist)
-        }
-        None
+    pub fn account_status(&self, account: AccountId) -> Option<Status> {
+        self.service_providers.get(&account)
     }
 
     pub fn authority(self) -> AccountId {
@@ -69,37 +61,32 @@ impl Contract {
     }
 
     #[payable]
-    pub fn whitelist(
-        &mut self,
-        accounts: Vec<AccountId>,
-    ) {
+    pub fn whitelist(&mut self, accounts: Vec<AccountId>) {
         let storage_start = env::storage_usage();
         self.assert_authority();
         for a in &accounts {
-            if self.blacklist.contains(a) {
-                self.blacklist.remove(a);
-            }
-            self.whitelist.insert(a);
+            self.service_providers.insert(a, &Status::Whitelisted);
         }
 
         self.assert_deposit(storage_start);
     }
 
     #[payable]
-    pub fn blacklist(
-        &mut self,
-        accounts: Vec<AccountId>,
-    ) {
+    pub fn blacklist(&mut self, accounts: Vec<AccountId>) {
         let storage_start = env::storage_usage();
         self.assert_authority();
         for a in &accounts {
-            if self.whitelist.contains(a) {
-                self.whitelist.remove(a);
-            }
-            self.blacklist.insert(a);
+            self.service_providers.insert(a, &Status::Blacklisted);
         }
 
         self.assert_deposit(storage_start);
+    }
+
+    pub fn unlist(&mut self, accounts: Vec<AccountId>) {
+        self.assert_authority();
+        for a in &accounts {
+            self.service_providers.remove(a);
+        }
     }
 
     //
@@ -113,18 +100,26 @@ impl Contract {
         )
     }
 
-    fn assert_deposit(&self, storage_start: u128)  {
-        const required_deposit = env::storage_usage - storage_start * env::storage_byte_cost();
-        require!(required_deposit <= env::attached_deposit, "not enought deposit to cover the storage"); 
+    fn assert_deposit(&self, storage_start: u64) {
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            required_deposit <= env::attached_deposit(),
+            "not enought deposit to cover the storage"
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use near_sdk::test_utils::{self, VMContextBuilder};
-    use near_sdk::{testing_env, Balance, Gas, VMContext};
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::{testing_env, AccountId, Balance, VMContext, ONE_NEAR};
 
-    use pretty_assertions::assert_eq;
+    use crate::storage::Status;
+    use crate::Contract;
+
+    const START: u64 = 10;
+    const MILI_NEAR: Balance = ONE_NEAR / 1_000;
 
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
@@ -146,7 +141,155 @@ mod tests {
         AccountId::new_unchecked("authority.near".to_string())
     }
 
-    fn max_gas() -> Gas {
-        Gas::ONE_TERA.mul(300)
+    fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
+        let mut ctx = VMContextBuilder::new()
+            .predecessor_account_id(authority())
+            .block_timestamp(START)
+            .is_view(false)
+            .build();
+        testing_env!(ctx.clone());
+        let ctr = Contract::new(authority());
+        ctx.predecessor_account_id = predecessor.clone();
+        testing_env!(ctx.clone());
+        (ctx, ctr)
+    }
+
+    #[test]
+    fn assert_authority() {
+        let (_, ctr) = setup(&authority());
+        ctr.assert_authority()
+    }
+
+    #[test]
+    #[should_panic(expected = "not an authority")]
+    fn assert_non_authority() {
+        let (_, ctr) = setup(&alice());
+        ctr.assert_authority()
+    }
+
+    #[test]
+    #[should_panic(expected = "not an authority")]
+    fn whitelist_not_authority() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.whitelist(vec![bob(), carol()]);
+    }
+
+    #[test]
+    #[should_panic(expected = "not an authority")]
+    fn blacklist_not_authority() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.blacklist(vec![bob(), carol()]);
+    }
+
+    #[test]
+    #[should_panic(expected = "not enought deposit to cover the storage")]
+    fn whitelist_wrong_deposit() {
+        let (_, mut ctr) = setup(&authority());
+        ctr.whitelist(vec![bob(), carol()]);
+    }
+
+    #[test]
+    fn whitelist_authority() {
+        let (mut ctx, mut ctr) = setup(&authority());
+        ctx.attached_deposit = MILI_NEAR * 10;
+        testing_env!(ctx);
+        ctr.whitelist(vec![bob(), carol()]);
+        assert!(ctr.is_whitelisted(bob()));
+        assert!(ctr.is_whitelisted(carol()));
+    }
+
+    #[test]
+    #[should_panic(expected = "not enought deposit to cover the storage")]
+    fn blacklist_wrong_deposit() {
+        let (_, mut ctr) = setup(&authority());
+        ctr.blacklist(vec![bob(), carol()]);
+    }
+
+    #[test]
+    fn blacklist_authority() {
+        let (mut ctx, mut ctr) = setup(&authority());
+        ctx.attached_deposit = MILI_NEAR * 10;
+        testing_env!(ctx);
+        ctr.blacklist(vec![bob(), carol()]);
+        assert!(ctr.is_blacklisted(bob()));
+        assert!(ctr.is_blacklisted(carol()));
+    }
+
+    #[test]
+    fn account_status() {
+        let (mut ctx, mut ctr) = setup(&authority());
+        ctx.attached_deposit = MILI_NEAR * 10;
+        testing_env!(ctx);
+        ctr.whitelist(vec![alice(), bob()]);
+        ctr.blacklist(vec![carol()]);
+        assert!(ctr.is_whitelisted(alice()));
+        assert!(ctr.is_whitelisted(bob()));
+        assert!(ctr.is_blacklisted(carol()));
+        assert_eq!(ctr.account_status(alice()), Some(Status::Whitelisted));
+        assert_eq!(ctr.account_status(bob()), Some(Status::Whitelisted));
+        assert_eq!(ctr.account_status(carol()), Some(Status::Blacklisted));
+        assert_eq!(ctr.account_status(dan()), None);
+    }
+
+    #[test]
+    fn query_authority() {
+        let (_, ctr) = setup(&authority());
+        assert_eq!(ctr.authority(), authority());
+    }
+
+    #[test]
+    fn change_authority() {
+        let (_, mut ctr) = setup(&authority());
+        ctr.change_authority(alice());
+        assert_eq!(ctr.authority(), alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "not an authority")]
+    fn change_authority_non_authority() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.change_authority(alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "not an authority")]
+    fn unlist_not_authority() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.unlist(vec![bob(), carol()]);
+    }
+
+    #[test]
+    fn unlist_authority() {
+        let (_, mut ctr) = setup(&authority());
+        ctr.unlist(vec![bob(), carol()]);
+    }
+
+    #[test]
+    fn change_status_multiple_times() {
+        let (mut ctx, mut ctr) = setup(&authority());
+        assert_eq!(ctr.account_status(alice()), None);
+
+        ctx.attached_deposit = MILI_NEAR * 10;
+        testing_env!(ctx);
+
+        // move alice to whitelist
+        ctr.whitelist(vec![alice()]);
+        assert_eq!(ctr.account_status(alice()), Some(Status::Whitelisted));
+
+        // move alice to blacklist
+        ctr.blacklist(vec![alice()]);
+        assert_eq!(ctr.account_status(alice()), Some(Status::Blacklisted));
+
+        // unlist alice
+        ctr.unlist(vec![alice()]);
+        assert_eq!(ctr.account_status(alice()), None);
+
+        // move alice to blacklist
+        ctr.blacklist(vec![alice()]);
+        assert_eq!(ctr.account_status(alice()), Some(Status::Blacklisted));
+
+        // move alice to blacklist
+        ctr.blacklist(vec![alice()]);
+        assert_eq!(ctr.account_status(alice()), Some(Status::Blacklisted));
     }
 }

@@ -2,17 +2,14 @@
 resolver = "1"
 members = [
     "registry",
-    "token",
+    # "token",
 ]
 
 [workspace.package]
 edition = "2021"
 license = "Mozilla Public License Version 2.0"
 repository = "https://github.com/scale-it/near-grant-protocol"
-authors = [
-    "Robert Zaremba",
-    "Stanislaw Czembor"
-]
+authors = ["Robert Zaremba", "Stanislaw Czembor"]
 
 [profile.release]
 codegen-units = 1

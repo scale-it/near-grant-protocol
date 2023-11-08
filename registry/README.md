@@ -18,3 +18,4 @@ Registry to keep track of accounts status for the `grant token`. We divide the a
 - `change_authority(new_authority: AccountId)`
 - `whitelist(accounts: Vec<AccountId>)`
 - `blacklist(accounts: Vec<AccountId>)`
+- `unlist(accounts: Vec<AccountId)`
