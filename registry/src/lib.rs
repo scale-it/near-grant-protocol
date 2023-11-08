@@ -15,7 +15,6 @@ pub struct Contract {
 
 #[near_bindgen]
 impl Contract {
-    /// Contract constructor.
     #[init]
     pub fn new(
         authority: AccountId,
@@ -103,8 +102,11 @@ impl Contract {
         self.assert_deposit(storage_start);
     }
 
+    //
+    // Private
+    //
 
-    pub fn assert_authority(&self) {
+    fn assert_authority(&self) {
         require!(
             self.authority == env::predecessor_account_id(),
             "not an authority"
@@ -123,8 +125,6 @@ mod tests {
     use near_sdk::{testing_env, Balance, Gas, VMContext};
 
     use pretty_assertions::assert_eq;
-
-    use super::*;
 
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
@@ -148,33 +148,5 @@ mod tests {
 
     fn max_gas() -> Gas {
         Gas::ONE_TERA.mul(300)
-    }
-
-    const MSECOND: u64 = 1_000_000; // milisecond in ns
-    const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 9 * MILI_NEAR;
-
-    fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
-        let mut ctx = VMContextBuilder::new()
-            .predecessor_account_id(admin())
-            .block_timestamp(START * MSECOND) // multiplying by mili seconds for easier testing
-            .is_view(false)
-            .build();
-        testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1], admins_flagged());
-        ctr.admin_add_sbt_issuer(issuer1());
-        ctr.admin_add_sbt_issuer(issuer2());
-        ctr.admin_add_sbt_issuer(issuer3());
-        ctr.admin_set_authorized_flaggers([predecessor.clone()].to_vec());
-        ctx.predecessor_account_id = predecessor.clone();
-        testing_env!(ctx.clone());
-        (ctx, ctr)
-    }
-
-    #[test]
-    fn init_method() {
-        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1], vec![]);
-        // make sure the iah_issuer has been set as an issuer
-        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
     }
 }
