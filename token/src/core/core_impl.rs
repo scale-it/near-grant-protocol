@@ -53,10 +53,10 @@ pub struct MultiToken {
     pub total_supply: LookupMap<TokenId, Balance>,
 
     /// Metadata for each token
-    pub token_metadata_by_id: Option<LookupMap<TokenId, TokenMetadata>>,
+    pub token_metadata_by_id: LookupMap<TokenId, TokenMetadata>,
 
     /// All tokens owned by user
-    pub tokens_per_owner: Option<LookupMap<AccountId, UnorderedSet<TokenId>>>,
+    pub tokens_per_owner: LookupMap<AccountId, UnorderedSet<TokenId>>,
 
     /// Balance of user for given token
     pub balances_per_token: UnorderedMap<TokenId, LookupMap<AccountId, u128>>,
@@ -95,6 +95,13 @@ pub enum StorageKey {
     BalancesInner { token_id: Vec<u8> },
     TokenHoldersInner { token_id: TokenId },
 
+    MultiToken,
+    Metadata,
+    TokenMetadata2,
+    Enumeration,
+    Approval,
+    TokenHolders,
+
     FTBalances,
 }
 
@@ -102,8 +109,6 @@ impl MultiToken {
     pub fn new<Q, R, S, T, U>(
         owner_by_id_prefix: Q,
         owner_id: AccountId,
-        token_metadata_prefix: Option<R>,
-        enumeration_prefix: Option<S>,
         approval_prefix: Option<T>,
         token_holders_prefix: Option<U>,
     ) -> Self
@@ -130,8 +135,8 @@ impl MultiToken {
             extra_storage_in_bytes_per_emission: 0,
             owner_by_id: UnorderedMap::new(owner_by_id_prefix),
             total_supply: LookupMap::new(StorageKey::TotalSupply { supply: 0 }),
-            token_metadata_by_id: token_metadata_prefix.map(LookupMap::new),
-            tokens_per_owner: enumeration_prefix.map(LookupMap::new),
+            token_metadata_by_id: LookupMap::new(StorageKey::TokenMetadata),
+            tokens_per_owner: LookupMap::new(StorageKey::Enumeration),
             accounts_storage: LookupMap::new(StorageKey::Accounts),
             balances_per_token: UnorderedMap::new(StorageKey::Balances),
             approvals_by_token_id,
@@ -362,7 +367,7 @@ impl MultiToken {
         let initial_storage_usage = refund_id.map(|account_id| (account_id, env::storage_usage()));
 
         // Panic if contract is using metadata extension and caller must provide it
-        if self.token_metadata_by_id.is_some() && token_metadata.is_none() {
+        if token_metadata.is_none() {
             env::panic_str("MUST provide metadata");
         }
         // Increment next id of the token. Panic if it's overflowing u64::MAX
@@ -386,9 +391,7 @@ impl MultiToken {
 
         // Insert new metadata
         if let Some(metadata) = &token_metadata {
-            self.token_metadata_by_id
-                .as_mut()
-                .and_then(|by_id| by_id.insert(&token_id, metadata));
+            self.token_metadata_by_id.insert(&token_id, metadata);
         }
 
         // Insert new supply
@@ -407,15 +410,13 @@ impl MultiToken {
         self.internal_update_token_holders(&token_id, &owner_id);
 
         // Updates enumeration if extension is used
-        if let Some(per_owner) = &mut self.tokens_per_owner {
-            let mut token_ids = per_owner.get(&owner_id).unwrap_or_else(|| {
-                UnorderedSet::new(StorageKey::TokensPerOwner {
-                    account_hash: env::sha256(owner_id.as_bytes()),
-                })
-            });
-            token_ids.insert(&token_id);
-            per_owner.insert(&owner_id, &token_ids);
-        }
+        let mut token_ids = self.tokens_per_owner.get(&owner_id).unwrap_or_else(|| {
+            UnorderedSet::new(StorageKey::TokensPerOwner {
+                account_hash: env::sha256(owner_id.as_bytes()),
+            })
+        });
+        token_ids.insert(&token_id);
+        self.tokens_per_owner.insert(&owner_id, &token_ids);
 
         if let Some((id, usage)) = initial_storage_usage {
             refund_deposit_to_account(env::storage_usage() - usage, id);
@@ -691,11 +692,7 @@ impl MultiTokenCore for MultiToken {
 
 impl MultiToken {
     fn internal_get_token_metadata(&self, token_id: &TokenId) -> Option<Token> {
-        let metadata = if let Some(metadata_by_id) = &self.token_metadata_by_id {
-            metadata_by_id.get(token_id)
-        } else {
-            None
-        };
+        let metadata = self.token_metadata_by_id.get(token_id);
         let supply = self.total_supply.get(token_id)?;
         let owner_id = self.owner_by_id.get(token_id)?;
 

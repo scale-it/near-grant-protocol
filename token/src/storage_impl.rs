@@ -50,12 +50,10 @@ impl MultiToken {
     }
 
     fn storage_cost(&self, account_id: &AccountId) -> Balance {
-        if let Some(tokens) = &self.tokens_per_owner {
-            if let Some(user_tokens) = tokens.get(account_id) {
-                return (user_tokens.len() * self.storage_usage_per_token
-                    + self.account_storage_usage) as Balance
-                    * env::storage_byte_cost();
-            }
+        if let Some(user_tokens) = self.tokens_per_owner.get(account_id) {
+            return (user_tokens.len() * self.storage_usage_per_token + self.account_storage_usage)
+                as Balance
+                * env::storage_byte_cost();
         }
 
         (self.account_storage_usage + self.storage_usage_per_token) as Balance
@@ -63,10 +61,8 @@ impl MultiToken {
     }
 
     fn get_tokens_amount(&self, account_id: &AccountId) -> u64 {
-        if let Some(tokens) = &self.tokens_per_owner {
-            if let Some(user_tokens) = tokens.get(account_id) {
-                return user_tokens.len();
-            }
+        if let Some(user_tokens) = self.tokens_per_owner.get(account_id) {
+            return user_tokens.len();
         }
 
         0
@@ -138,7 +134,7 @@ impl MultiToken {
         self.storage_balance_of(account_id.clone()).unwrap()
     }
 
-    fn storage_withdraw(&mut self, amount: Option<U128>) -> StorageBalance {
+    pub fn storage_withdraw(&mut self, amount: Option<U128>) -> StorageBalance {
         assert_one_yocto();
         let predecessor_account_id = env::predecessor_account_id();
         let to_withdraw =
@@ -147,11 +143,11 @@ impl MultiToken {
         self.storage_balance_of(predecessor_account_id).unwrap()
     }
 
-    fn storage_unregister(&mut self, force: Option<bool>) -> bool {
+    pub fn storage_unregister(&mut self, force: Option<bool>) -> bool {
         self.internal_storage_unregister(force).is_some()
     }
 
-    fn storage_balance_bounds(&self) -> StorageBalanceBounds {
+    pub fn storage_balance_bounds(&self) -> StorageBalanceBounds {
         let required_storage_balance = Balance::from(self.account_storage_usage)
             * env::storage_byte_cost()
             + Balance::from(self.storage_usage_per_token) * env::storage_byte_cost();
@@ -162,7 +158,7 @@ impl MultiToken {
         }
     }
 
-    fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
+    pub fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
         self.accounts_storage
             .get(&account_id)
             .map(|account_balance| StorageBalance {
