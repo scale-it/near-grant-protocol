@@ -3,6 +3,16 @@
 Token used to distribute grants in the ecosystem and incentivize the grant recivers to reinvest withing the ecosystem.
 The grant is first wrapped and packed into the `grant token` and then distributed to the grant recivers. If they want to unwrap the tokens they would only receive 80% of the original value. If they spend it with the verified service providers, they on the other hand can unwrap the 100% of the original value. The difference so lets say the 20% should go back to the grant provider.
 
+## Why using MT token?
+
+We need to distinguish tokens by granter:
+
+- granter should be able to withdraw his tokens without being a subject of the penalty
+- our long term goal is to use measure token velocity by granter
+- each token has it's underlying value, and if we introduce more levels of penalty, we end up with tracking problems (people sending to each other grant tokens from different grants)
+- token per granter allows us to easily measure performance of granter and grantee
+- opportunity to test and work with the Multi Token template and had more hands on experience for MT standard we want to finalize.
+
 ## Example of the flow
 
 Let's define the addresses we will use in the example:
