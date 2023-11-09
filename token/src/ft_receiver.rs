@@ -1,7 +1,7 @@
 use near_sdk::json_types::U128;
 use near_sdk::{env, ext_contract, AccountId, PromiseOrValue};
 
-use crate::core::MultiToken;
+use crate::Contract;
 
 #[ext_contract(ext_ft_receiver)]
 pub trait FungibleTokenReceiver {
