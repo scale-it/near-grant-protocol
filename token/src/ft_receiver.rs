@@ -86,7 +86,7 @@ impl Contract {
         let old_ft_balance = self
             .ft_balances
             .get(&gtoken)
-            .expect("token wrapped token does not exist");
+            .expect("wrapped token does not exist");
 
         self.ft_balances.insert(
             &gtoken,

@@ -40,6 +40,6 @@ pub struct Token {
     pub token_id: String,
     pub owner_id: AccountId,
     /// Total amount generated
-    pub supply: u128,
+    pub supply: u128, // TODO: should be U128
     pub metadata: Option<TokenMetadata>,
 }

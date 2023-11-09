@@ -18,11 +18,16 @@ pub mod events;
 pub mod ext;
 pub mod ft_receiver;
 pub mod metadata;
+pub mod migration;
 pub mod storage_impl;
 pub mod token;
 pub mod token_holders;
 pub mod types;
 pub mod utils;
+
+// penalty in bp
+pub const PENALTY: u128 = 2_000;
+pub const ONE_BP: u128 = 10_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -44,22 +49,16 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new_default_meta(owner_id: AccountId, registry: AccountId) -> Self {
+    pub fn new(owner_id: AccountId, registry: AccountId) -> Self {
         let metadata = MtContractMetadata {
             spec: metadata::MT_METADATA_SPEC.to_string(),
-            name: "Example NEAR multi token".to_string(),
-            symbol: "EXAMPLE".to_string(),
+            name: "GrantToken".to_string(),
+            symbol: "gToken".to_string(),
             icon: None,
             base_uri: None,
             reference: None,
             reference_hash: None,
         };
-
-        Self::new(owner_id, metadata, registry)
-    }
-
-    #[init]
-    pub fn new(owner_id: AccountId, metadata: MtContractMetadata, registry: AccountId) -> Self {
         metadata.assert_valid();
 
         Self {
@@ -74,6 +73,7 @@ impl Contract {
 
 #[near_bindgen]
 impl MultiTokenCore for Contract {
+    #[payable]
     fn mt_transfer(
         &mut self,
         receiver_id: AccountId,
@@ -86,6 +86,7 @@ impl MultiTokenCore for Contract {
             .mt_transfer(receiver_id, token_id, amount, approval, memo)
     }
 
+    #[payable]
     fn mt_batch_transfer(
         &mut self,
         receiver_id: AccountId,
@@ -98,6 +99,7 @@ impl MultiTokenCore for Contract {
             .mt_batch_transfer(receiver_id, token_ids, amounts, approvals, memo)
     }
 
+    #[payable]
     fn mt_transfer_call(
         &mut self,
         receiver_id: AccountId,
@@ -111,6 +113,7 @@ impl MultiTokenCore for Contract {
             .mt_transfer_call(receiver_id, token_id, amount, approval, memo, msg)
     }
 
+    #[payable]
     fn mt_batch_transfer_call(
         &mut self,
         receiver_id: AccountId,

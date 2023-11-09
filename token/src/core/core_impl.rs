@@ -161,19 +161,6 @@ impl MultiToken {
         self.accounts_storage.remove(&tmp_account_id);
     }
 
-    /// Used to get balance of specified account in specified token
-    pub fn internal_unwrap_balance_of(
-        &self,
-        token_id: &TokenId,
-        account_id: &AccountId,
-    ) -> Balance {
-        self.balances
-            .get(token_id)
-            .expect("This token does not exist")
-            .get(account_id)
-            .unwrap_or(0)
-    }
-
     /// Add to balance of user specified amount
     pub fn internal_deposit(
         &mut self,
@@ -181,22 +168,20 @@ impl MultiToken {
         account_id: &AccountId,
         amount: Balance,
     ) {
-        let balance = self.internal_unwrap_balance_of(token_id, account_id);
-        if let Some(new) = balance.checked_add(amount) {
-            let mut balances = self.balances.get(token_id).expect("Token not found");
-            balances.insert(account_id, &new);
-            self.total_supply.insert(
-                token_id,
-                &self
-                    .total_supply
-                    .get(token_id)
-                    .expect(ERR_TOTAL_SUPPLY_NOT_FOUND_BY_TOKEN_ID)
-                    .checked_add(amount)
-                    .unwrap_or_else(|| env::panic_str(ERR_TOTAL_SUPPLY_OVERFLOW)),
-            );
-        } else {
-            env::panic_str("Balance overflow");
-        }
+        let mut balances = self.balances.get(token_id).expect("Token not found");
+        balances.insert(
+            account_id,
+            &(balances.get(&account_id).unwrap_or(0) + amount),
+        );
+        self.total_supply.insert(
+            token_id,
+            &self
+                .total_supply
+                .get(token_id)
+                .expect(ERR_TOTAL_SUPPLY_NOT_FOUND_BY_TOKEN_ID)
+                .checked_add(amount)
+                .unwrap_or_else(|| env::panic_str(ERR_TOTAL_SUPPLY_OVERFLOW)),
+        );
     }
 
     /// Subtract specified amount from user account in given token
@@ -206,22 +191,20 @@ impl MultiToken {
         account_id: &AccountId,
         amount: Balance,
     ) {
-        let balance = self.internal_unwrap_balance_of(token_id, account_id);
-        if let Some(new) = balance.checked_sub(amount) {
-            let mut balances = self.balances.get(token_id).expect("Token not found");
-            balances.insert(account_id, &new);
-            self.total_supply.insert(
-                token_id,
-                &self
-                    .total_supply
-                    .get(token_id)
-                    .expect(ERR_TOTAL_SUPPLY_NOT_FOUND_BY_TOKEN_ID)
-                    .checked_sub(amount)
-                    .unwrap_or_else(|| env::panic_str(ERR_TOTAL_SUPPLY_OVERFLOW)),
-            );
-        } else {
-            env::panic_str("The account doesn't have enough balance");
-        }
+        let mut balances = self.balances.get(token_id).expect("Token not found");
+        balances.insert(
+            account_id,
+            &(balances.get(&account_id).unwrap_or(0) - amount),
+        );
+        self.total_supply.insert(
+            token_id,
+            &self
+                .total_supply
+                .get(token_id)
+                .expect(ERR_TOTAL_SUPPLY_NOT_FOUND_BY_TOKEN_ID)
+                .checked_sub(amount)
+                .unwrap_or_else(|| env::panic_str(ERR_TOTAL_SUPPLY_OVERFLOW)),
+        );
     }
 
     pub fn internal_batch_transfer(
