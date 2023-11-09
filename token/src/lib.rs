@@ -36,12 +36,15 @@ pub struct Contract {
 
     /// revers map from TokenId => (issuer, ft contract)
     pub gtokens: LookupMap<u64, (AccountId, AccountId)>,
+
+    /// registry keeping track of the service providers status
+    pub registry: AccountId,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new_default_meta(owner_id: AccountId) -> Self {
+    pub fn new_default_meta(owner_id: AccountId, registry: AccountId) -> Self {
         let metadata = MtContractMetadata {
             spec: metadata::MT_METADATA_SPEC.to_string(),
             name: "Example NEAR multi token".to_string(),
@@ -52,11 +55,11 @@ impl Contract {
             reference_hash: None,
         };
 
-        Self::new(owner_id, metadata)
+        Self::new(owner_id, metadata, registry)
     }
 
     #[init]
-    pub fn new(owner_id: AccountId, metadata: MtContractMetadata) -> Self {
+    pub fn new(owner_id: AccountId, metadata: MtContractMetadata, registry: AccountId) -> Self {
         metadata.assert_valid();
 
         Self {
@@ -64,6 +67,7 @@ impl Contract {
             metadata: LazyOption::new(StorageKey::Metadata, Some(&metadata)),
             ft_balances: LookupMap::new(StorageKey::FTBalances),
             gtokens: LookupMap::new(StorageKey::GTokens),
+            registry,
         }
     }
 }

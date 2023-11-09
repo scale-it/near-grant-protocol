@@ -1,7 +1,7 @@
 use near_sdk::json_types::U128;
 use near_sdk::{env, ext_contract, near_bindgen, AccountId, PromiseOrValue, ONE_YOCTO};
 
-use crate::ext::ext_ft;
+use crate::ext::{ext_ft, ext_reg, Status};
 use crate::metadata::TokenMetadata;
 use crate::types::WrappedToken;
 use crate::*;
@@ -95,16 +95,43 @@ impl Contract {
                 balance: old_ft_balance.balance - amount,
             },
         );
+        // step2: check if there is a penalty
+        ext_reg::ext(self.registry.clone())
+            .with_attached_deposit(ONE_YOCTO)
+            .account_status(caller.clone())
+            .then(
+                Self::ext(env::current_account_id()).on_status_verified(amount, gtoken.1, caller),
+            );
+    }
 
-        ext_ft::ext(gtoken.1)
+    #[private]
+    pub fn on_status_verified(
+        &mut self,
+        #[callback_unwrap] status: Option<ext::Status>,
+        amount: u128,
+        ft_contract: AccountId,
+        caller: AccountId,
+    ) {
+        let amount_to_send;
+        match status {
+            Some(Status::Whitelisted) => {
+                amount_to_send = amount;
+            }
+            Some(Status::Blacklisted) => {
+                amount_to_send = 0;
+            }
+            None => {
+                amount_to_send = amount * 8 / 10; // 80% of the origianal value for the non-verified service providers
+            }
+        }
+
+        ext_ft::ext(ft_contract)
             .with_attached_deposit(ONE_YOCTO)
             .ft_transfer(
-                caller.clone(),
-                near_sdk::json_types::U128::from(amount),
+                caller,
+                near_sdk::json_types::U128::from(amount_to_send),
                 None,
             );
-
-        // step2: check if there is a penalty
     }
 }
 
