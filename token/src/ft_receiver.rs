@@ -77,17 +77,13 @@ impl Contract {
         let caller = env::predecessor_account_id();
         self.tokens.internal_withdraw(&token_id, &caller, amount);
 
-        let token_id = token_id.parse::<u64>().expect("incorrect token id");
-        let gtoken = self
-            .gtokens
-            .get(&token_id)
-            .expect("grant token does not exist");
+        let mt = token_id.parse::<u64>().expect("incorrect token id");
+        let gtoken = self.gtokens.get(&mt).expect("grant token does not exist");
 
         let old_ft_balance = self
             .ft_balances
             .get(&gtoken)
             .expect("wrapped token does not exist");
-
         self.ft_balances.insert(
             &gtoken,
             &WrappedToken {
@@ -95,12 +91,14 @@ impl Contract {
                 balance: old_ft_balance.balance - amount,
             },
         );
+
         // step2: check if there is a penalty
         ext_reg::ext(self.registry.clone())
             .with_attached_deposit(ONE_YOCTO)
             .account_status(caller.clone())
             .then(
-                Self::ext(env::current_account_id()).on_status_verified(amount, gtoken.1, caller),
+                Self::ext(env::current_account_id())
+                    .on_status_verified(amount, gtoken.1, token_id, caller),
             );
     }
 
@@ -110,19 +108,27 @@ impl Contract {
         #[callback_unwrap] status: Option<ext::Status>,
         amount: u128,
         ft_contract: AccountId,
+        mt_id: TokenId,
         caller: AccountId,
     ) {
         let amount_to_send;
+        let mut penalty = 0;
         match status {
             Some(Status::Whitelisted) => {
                 amount_to_send = amount;
             }
             Some(Status::Blacklisted) => {
                 amount_to_send = 0;
+                // TODO rollback the withdraw
             }
             None => {
-                amount_to_send = amount * 8 / 10; // 80% of the origianal value for the non-verified service providers
+                penalty = amount * 2 / 10; // 20% of the origianal value for the non-verified service providers
+                amount_to_send = amount - penalty;
             }
+        }
+        if penalty != 0 {
+            let mt_owner = self.tokens.owner_by_id.get(&mt_id).unwrap();
+            self.tokens.internal_deposit(&mt_id, &mt_owner, penalty);
         }
 
         ext_ft::ext(ft_contract)
