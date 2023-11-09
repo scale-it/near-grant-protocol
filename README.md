@@ -8,26 +8,31 @@ The grant is first wrapped and packed into the `grant token` and then distribute
 1. Register into FT contract
 
 ```bash
-    near call test-token.near storage_deposit '{"account_id": "alice.near"}' --accountId alice.near
+    CTR=grant-protocol.testnet
+    FT=test-token.cheddar.testnet
+    GRANTER=grant-provider.testnet
+    GRANTEE=grant-reciver.testnet
+
+    near call $FT storage_deposit '{"account_id": "'$GRANTER'"}' --accountId $GRANTER --deposit 0.05
+    near call $FT storage_deposit '{"account_id": "'$GRANTEE'"}' --accountId $GRANTEE --deposit 0.05
 ```
 
 2. The grant provider wraps the token
 
 ```bash
-
-near call test-token.near ft_transfer_call '{"receiver_id": "grant-token.near", "amount": "200000000000000000000000", "msg": ""}'  --accountId grant-provider.near --depositYocto 1 --gas 300000000000000
+near call $FT ft_transfer_call '{"receiver_id": "'$CTR'", "amount": "200000000000000000000000", "msg": ""}'  --accountId $GRANTER --depositYocto 1 --gas 300000000000000
 
 ```
 
 3. The grant provider send the `grant token` (the grant token can be send inbetween accounts using the same function)
 
 ```bash
-near call grant-token.near mt_transfer '{"receiver_id": "grant-reciver.near", "token_id": "1", "amount": "10000000000000000000000"}' --accountId grant-provider --depositYocto 1
+near call $CTR mt_transfer '{"receiver_id": "'$GRANTEE'", "token_id": "1", "amount": "10000000000000000000000"}' --accountId $GRANTER --depositYocto 1
 
 ```
 
 4. The grant reciver then can unwrap the token calling
 
 ```bash
-near call grant-token.near unwrap '{"token_id": "1", amount: "10000000000000000000000"}' --accountId grant-reciver.near
+near call $CTR unwrap '{"token_id": "1", amount: "10000000000000000000000"}' --accountId $GRANTEE
 ```
