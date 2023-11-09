@@ -12,7 +12,7 @@ use crate::core::MultiTokenCore;
 use crate::events::{MtMint, MtTransfer};
 use crate::metadata::TokenMetadata;
 use crate::token::{Approval, ApprovalContainer, ClearedApproval, Token, TokenId};
-use crate::utils::{expect_approval, expect_approval_for_token, refund_deposit_to_account, Entity};
+use crate::utils::{expect_approval_for_token, refund_deposit_to_account};
 
 pub const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(15_000_000_000_000);
 pub const GAS_FOR_MT_TRANSFER_CALL: Gas = Gas(50_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER.0);
@@ -62,16 +62,16 @@ pub struct MultiToken {
     pub balances_per_token: UnorderedMap<TokenId, LookupMap<AccountId, u128>>,
     /// Approvals granted for a given token.
     /// Nested maps are structured as: token_id -> owner_id -> grantee_id -> (approval_id, amount)
-    pub approvals_by_token_id: Option<ApprovalContainer>,
+    pub approvals_by_token_id: ApprovalContainer,
 
     /// Next id of approval
-    pub next_approval_id_by_id: Option<LookupMap<TokenId, u64>>,
+    pub next_approval_id_by_id: LookupMap<TokenId, u64>,
 
     /// Next id for token
     pub next_token_id: u64,
 
     /// Token holders with positive balance per token
-    pub holders_per_token: Option<UnorderedMap<TokenId, UnorderedSet<AccountId>>>,
+    pub holders_per_token: UnorderedMap<TokenId, UnorderedSet<AccountId>>,
 
     // TODO: add check how much GRANT tokens are locked to represent claims.
     /// ft_balances : (issuer, )
@@ -106,45 +106,24 @@ pub enum StorageKey {
 }
 
 impl MultiToken {
-    pub fn new<Q, R, S, T, U>(
-        owner_by_id_prefix: Q,
-        owner_id: AccountId,
-        approval_prefix: Option<T>,
-        token_holders_prefix: Option<U>,
-    ) -> Self
-    where
-        Q: IntoStorageKey,
-        R: IntoStorageKey,
-        S: IntoStorageKey,
-        T: IntoStorageKey,
-        U: IntoStorageKey,
-    {
-        let (approvals_by_token_id, next_approval_id_by_id) = if let Some(prefix) = approval_prefix
-        {
-            let prefix: Vec<u8> = prefix.into_storage_key();
-            (
-                Some(LookupMap::new(prefix.clone())),
-                Some(LookupMap::new([prefix, "n".into()].concat())),
-            )
-        } else {
-            (None, None)
-        };
-
+    pub fn new(owner_id: AccountId) -> Self {
         let mut this = Self {
             owner_id,
             extra_storage_in_bytes_per_emission: 0,
-            owner_by_id: UnorderedMap::new(owner_by_id_prefix),
+            owner_by_id: UnorderedMap::new(StorageKey::MultiToken),
             total_supply: LookupMap::new(StorageKey::TotalSupply { supply: 0 }),
             token_metadata_by_id: LookupMap::new(StorageKey::TokenMetadata),
             tokens_per_owner: LookupMap::new(StorageKey::Enumeration),
             accounts_storage: LookupMap::new(StorageKey::Accounts),
             balances_per_token: UnorderedMap::new(StorageKey::Balances),
-            approvals_by_token_id,
-            next_approval_id_by_id,
+            approvals_by_token_id: LookupMap::new(StorageKey::Approval),
+            next_approval_id_by_id: LookupMap::new(
+                [StorageKey::Approval.into_storage_key(), "n".into()].concat(),
+            ),
             next_token_id: 0,
             account_storage_usage: 0,
             storage_usage_per_token: 0,
-            holders_per_token: token_holders_prefix.map(UnorderedMap::new),
+            holders_per_token: UnorderedMap::new(StorageKey::TokenHolders),
             ft_balances: LookupMap::new(StorageKey::FTBalances),
         };
 
@@ -167,13 +146,11 @@ impl MultiToken {
 
         self.balances_per_token
             .insert(&tmp_token_id, &user_token_balance);
-        if let Some(holders) = &mut self.holders_per_token {
-            let mut holders_set = UnorderedSet::new(StorageKey::TokenHoldersInner {
-                token_id: tmp_token_id.clone(),
-            });
-            holders_set.insert(&tmp_account_id);
-            holders.insert(&tmp_token_id, &holders_set);
-        }
+        let mut holders_set = UnorderedSet::new(StorageKey::TokenHoldersInner {
+            token_id: tmp_token_id.clone(),
+        });
+        holders_set.insert(&tmp_account_id);
+        self.holders_per_token.insert(&tmp_token_id, &holders_set);
         self.storage_usage_per_token = env::storage_usage() - initial_storage_usage;
 
         self.balances_per_token.remove(&tmp_token_id);
@@ -379,9 +356,7 @@ impl MultiToken {
         let token_id: TokenId = self.next_token_id.to_string();
 
         // If contract uses approval management create new LookupMap for approvals
-        self.next_approval_id_by_id
-            .as_mut()
-            .and_then(|internal| internal.insert(&token_id, &0));
+        self.next_approval_id_by_id.insert(&token_id, &0);
 
         // Alias
         let owner_id: AccountId = token_owner_id;
@@ -439,10 +414,8 @@ impl MultiToken {
         approval_id: &u64,
         amount: Balance,
     ) -> (AccountId, Approval) {
-        // If an approval was provided, ensure it meets requirements.
-        let approvals = expect_approval(self.approvals_by_token_id.as_mut(), Entity::Contract);
-
-        let mut by_owner = expect_approval_for_token(approvals.get(token_id), token_id);
+        let mut by_owner =
+            expect_approval_for_token(self.approvals_by_token_id.get(token_id), token_id);
 
         let mut by_sender_id = by_owner
             .get(owner_id)
@@ -477,7 +450,7 @@ impl MultiToken {
         }
         by_owner.insert(owner_id.clone(), by_sender_id.clone());
 
-        approvals.insert(token_id, &by_owner);
+        self.approvals_by_token_id.insert(token_id, &by_owner);
 
         // Given that we are consuming the approval or the part of it
         // Return the now-deleted approvals, so that caller may restore them in case of revert.
@@ -486,29 +459,27 @@ impl MultiToken {
 
     /// Used to update the set of current holders of a token.
     pub fn internal_update_token_holders(&mut self, token_id: &TokenId, account_id: &AccountId) {
-        if let Some(token_holders_by_token) = self.holders_per_token.as_mut() {
-            let mut holders = token_holders_by_token.get(token_id).unwrap_or_else(|| {
-                UnorderedSet::new(StorageKey::TokenHoldersInner {
-                    token_id: token_id.clone(),
-                })
-            });
-            let balances = self
-                .balances_per_token
-                .get(token_id)
-                .expect("Token not found");
+        let mut holders = self.holders_per_token.get(token_id).unwrap_or_else(|| {
+            UnorderedSet::new(StorageKey::TokenHoldersInner {
+                token_id: token_id.clone(),
+            })
+        });
+        let balances = self
+            .balances_per_token
+            .get(token_id)
+            .expect("Token not found");
 
-            let account_balance = balances.get(account_id).expect("Account not found");
+        let account_balance = balances.get(account_id).expect("Account not found");
 
-            if account_balance == 0 {
-                holders.remove(account_id);
-            } else if !holders.contains(account_id) {
-                holders.insert(account_id);
-            } else {
-                return;
-            }
-
-            token_holders_by_token.insert(token_id, &holders);
+        if account_balance == 0 {
+            holders.remove(account_id);
+        } else if !holders.contains(account_id) {
+            holders.insert(account_id);
+        } else {
+            return;
         }
+
+        self.holders_per_token.insert(token_id, &holders);
     }
 }
 
@@ -761,21 +732,22 @@ impl MultiToken {
         if revert_approvals {
             log!("Reverting approvals");
 
-            if let Some(by_token) = self.approvals_by_token_id.as_mut() {
-                if let Some(approvals) = approvals {
-                    for (i, approval) in approvals.iter().enumerate() {
-                        if let Some(cleared_approval) = approval {
-                            let token_id = &token_ids[i];
-                            let previous_owner = &previous_owner_ids[i];
-                            let mut by_owner = by_token.get(token_id).expect("Token not found");
-                            let by_grantee = by_owner
-                                .get_mut(previous_owner)
-                                .expect("Previous owner not found");
-                            let (grantee_id, apprioval) = cleared_approval;
-                            log!("Restored approval for token {:?} for owner {:?} and grantee {:?} with allowance {:?}", &token_id, &previous_owner, &grantee_id, &apprioval.amount);
-                            by_grantee.insert(grantee_id.clone(), apprioval.clone());
-                            by_token.insert(token_id, &by_owner);
-                        }
+            if let Some(approvals) = approvals {
+                for (i, approval) in approvals.iter().enumerate() {
+                    if let Some(cleared_approval) = approval {
+                        let token_id = &token_ids[i];
+                        let previous_owner = &previous_owner_ids[i];
+                        let mut by_owner = self
+                            .approvals_by_token_id
+                            .get(token_id)
+                            .expect("Token not found");
+                        let by_grantee = by_owner
+                            .get_mut(previous_owner)
+                            .expect("Previous owner not found");
+                        let (grantee_id, apprioval) = cleared_approval;
+                        log!("Restored approval for token {:?} for owner {:?} and grantee {:?} with allowance {:?}", &token_id, &previous_owner, &grantee_id, &apprioval.amount);
+                        by_grantee.insert(grantee_id.clone(), apprioval.clone());
+                        self.approvals_by_token_id.insert(token_id, &by_owner);
                     }
                 }
             }
