@@ -8,16 +8,19 @@ use near_sdk::json_types::U128;
 use near_sdk::{near_bindgen, AccountId, PanicOnDefault, PromiseOrValue};
 use token::{Token, TokenId};
 use token_holders::MultiTokenHolders;
+use types::WrappedToken;
 
 pub mod approval;
 pub mod core;
 pub mod enumeration;
 pub mod event_core;
 pub mod events;
+pub mod ft_receiver;
 pub mod metadata;
 pub mod storage_impl;
 pub mod token;
 pub mod token_holders;
+pub mod types;
 pub mod utils;
 
 #[near_bindgen]
@@ -27,8 +30,11 @@ pub struct Contract {
     metadata: LazyOption<MtContractMetadata>,
 
     // TODO: add check how much GRANT tokens are locked to represent claims.
-    /// ft_balances : (issuer, )
-    pub ft_balances: LookupMap<(AccountId, AccountId), u128>,
+    /// ft_balances: (issuer, tokenID) => (mapped tokenID wrapped balance)
+    pub ft_balances: LookupMap<(AccountId, AccountId), WrappedToken>,
+
+    /// revers map from TokenId => (issuer, token)
+    pub gtokens: LookupMap<u64, (AccountId, AccountId)>,
 }
 
 #[near_bindgen]
@@ -56,6 +62,7 @@ impl Contract {
             tokens: MultiToken::new(owner_id),
             metadata: LazyOption::new(StorageKey::Metadata, Some(&metadata)),
             ft_balances: LookupMap::new(StorageKey::FTBalances),
+            gtokens: LookupMap::new(StorageKey::GTokens),
         }
     }
 }

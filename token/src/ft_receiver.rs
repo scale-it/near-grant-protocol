@@ -1,7 +1,8 @@
 use near_sdk::json_types::U128;
-use near_sdk::{env, ext_contract, AccountId, PromiseOrValue};
+use near_sdk::{env, ext_contract, near_bindgen, AccountId, PromiseOrValue};
 
-use crate::Contract;
+use crate::types::WrappedToken;
+use crate::*;
 
 #[ext_contract(ext_ft_receiver)]
 pub trait FungibleTokenReceiver {
@@ -32,7 +33,7 @@ pub trait FungibleTokenReceiver {
 }
 
 #[near_bindgen]
-impl FungibleTokenReceiver for MultiToken {
+impl FungibleTokenReceiver for Contract {
     fn ft_on_transfer(
         &mut self,
         sender_id: AccountId,
@@ -40,11 +41,27 @@ impl FungibleTokenReceiver for MultiToken {
         msg: String,
     ) -> PromiseOrValue<U128> {
         let token = env::predecessor_account_id();
-        let token_g = &(sender_id, token);
-        let b = self.ft_balances.get(token_g).unwrap_or_default();
-        self.ft_balances.insert(token_g, &(b + amount.0));
+        let gtoken = &(sender_id, token);
+        let b = match self.ft_balances.get(gtoken) {
+            Some(b) => b,
+            None => {
+                let id = self.tokens.next_token_id;
+                self.tokens.next_token_id += 1;
+                WrappedToken { id, balance: 0 }
+            }
+        };
+        self.ft_balances.insert(
+            gtoken,
+            &WrappedToken {
+                id: b.id,
+                balance: b.balance + amount.0,
+            },
+        );
+        // self.tokens
+        //     .internal_mint(owner_id, supply, metadata, refund_id);
 
         // TODO: mint grant tokens
+        // TODO: mint event
 
         PromiseOrValue::Value(0.into())
     }

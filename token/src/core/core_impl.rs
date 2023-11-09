@@ -98,6 +98,7 @@ pub enum StorageKey {
     TokenHolders,
 
     FTBalances,
+    GTokens,
 }
 
 impl MultiToken {
@@ -115,7 +116,7 @@ impl MultiToken {
             next_approval_id_by_id: LookupMap::new(
                 [StorageKey::Approval.into_storage_key(), "n".into()].concat(),
             ),
-            next_token_id: 0,
+            next_token_id: 1,
             account_storage_usage: 0,
             storage_usage_per_token: 0,
             holders_per_token: UnorderedMap::new(StorageKey::TokenHolders),
@@ -320,6 +321,15 @@ impl MultiToken {
         token
     }
 
+    //     pub fn internal_mint2(        &mut self,
+    //         owner_id: AccountId,
+    //         supply: Option<Balance>,
+    //         metadata: Option<TokenMetadata>,
+    //         refund_id: Option<AccountId>,
+    // ) -> Token {
+
+    //     }
+
     /// Mint a new token without checking:
     /// * Whether the caller id is equal to the `owner_id`
     /// * `refund_id` will transfer the leftover balance after storage costs are calculated to the provided account.
@@ -341,13 +351,9 @@ impl MultiToken {
         if token_metadata.is_none() {
             env::panic_str("MUST provide metadata");
         }
-        // Increment next id of the token. Panic if it's overflowing u64::MAX
-        self.next_token_id = self
-            .next_token_id
-            .checked_add(1)
-            .expect("u64 overflow, cannot mint any more tokens");
 
         let token_id: TokenId = self.next_token_id.to_string();
+        self.next_token_id += 1;
 
         // If contract uses approval management create new LookupMap for approvals
         self.next_approval_id_by_id.insert(&token_id, &0);
