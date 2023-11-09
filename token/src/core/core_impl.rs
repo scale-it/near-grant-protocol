@@ -59,7 +59,7 @@ pub struct MultiToken {
     pub tokens_per_owner: LookupMap<AccountId, UnorderedSet<TokenId>>,
 
     /// Balance of user for given token
-    pub balances_per_token: UnorderedMap<TokenId, LookupMap<AccountId, u128>>,
+    pub balances: UnorderedMap<TokenId, LookupMap<AccountId, u128>>,
     /// Approvals granted for a given token.
     /// Nested maps are structured as: token_id -> owner_id -> grantee_id -> (approval_id, amount)
     pub approvals_by_token_id: ApprovalContainer,
@@ -88,7 +88,7 @@ pub enum StorageKey {
     ApprovalsInner { account_id_hash: CryptoHash },
     TotalSupply { supply: u128 },
     Balances,
-    BalancesInner { token_id: Vec<u8> },
+    BalancesInner { token_id: u64 },
     TokenHoldersInner { token_id: TokenId },
 
     MultiToken,
@@ -111,7 +111,7 @@ impl MultiToken {
             token_metadata_by_id: LookupMap::new(StorageKey::TokenMetadata),
             tokens_per_owner: LookupMap::new(StorageKey::Enumeration),
             accounts_storage: LookupMap::new(StorageKey::Accounts),
-            balances_per_token: UnorderedMap::new(StorageKey::Balances),
+            balances: UnorderedMap::new(StorageKey::Balances),
             approvals_by_token_id: LookupMap::new(StorageKey::Approval),
             next_approval_id_by_id: LookupMap::new(
                 [StorageKey::Approval.into_storage_key(), "n".into()].concat(),
@@ -130,17 +130,15 @@ impl MultiToken {
 
     fn measure_min_token_storage_cost(&mut self) {
         let tmp_token_id = u64::MAX.to_string();
-        let mut user_token_balance = LookupMap::new(StorageKey::BalancesInner {
-            token_id: env::sha256(tmp_token_id.as_bytes()),
-        });
+        let mut user_token_balance =
+            LookupMap::new(StorageKey::BalancesInner { token_id: u64::MAX });
         let tmp_account_id = AccountId::new_unchecked("a".repeat(64));
 
         let initial_storage_usage = env::storage_usage();
 
         user_token_balance.insert(&tmp_account_id, &u128::MAX);
 
-        self.balances_per_token
-            .insert(&tmp_token_id, &user_token_balance);
+        self.balances.insert(&tmp_token_id, &user_token_balance);
         let mut holders_set = UnorderedSet::new(StorageKey::TokenHoldersInner {
             token_id: tmp_token_id.clone(),
         });
@@ -148,7 +146,7 @@ impl MultiToken {
         self.holders_per_token.insert(&tmp_token_id, &holders_set);
         self.storage_usage_per_token = env::storage_usage() - initial_storage_usage;
 
-        self.balances_per_token.remove(&tmp_token_id);
+        self.balances.remove(&tmp_token_id);
     }
 
     fn measure_min_account_storage_cost(&mut self) {
@@ -169,7 +167,7 @@ impl MultiToken {
         token_id: &TokenId,
         account_id: &AccountId,
     ) -> Balance {
-        self.balances_per_token
+        self.balances
             .get(token_id)
             .expect("This token does not exist")
             .get(account_id)
@@ -185,10 +183,7 @@ impl MultiToken {
     ) {
         let balance = self.internal_unwrap_balance_of(token_id, account_id);
         if let Some(new) = balance.checked_add(amount) {
-            let mut balances = self
-                .balances_per_token
-                .get(token_id)
-                .expect("Token not found");
+            let mut balances = self.balances.get(token_id).expect("Token not found");
             balances.insert(account_id, &new);
             self.total_supply.insert(
                 token_id,
@@ -213,10 +208,7 @@ impl MultiToken {
     ) {
         let balance = self.internal_unwrap_balance_of(token_id, account_id);
         if let Some(new) = balance.checked_sub(amount) {
-            let mut balances = self
-                .balances_per_token
-                .get(token_id)
-                .expect("Token not found");
+            let mut balances = self.balances.get(token_id).expect("Token not found");
             balances.insert(account_id, &new);
             self.total_supply.insert(
                 token_id,
@@ -321,14 +313,73 @@ impl MultiToken {
         token
     }
 
-    //     pub fn internal_mint2(        &mut self,
-    //         owner_id: AccountId,
-    //         supply: Option<Balance>,
-    //         metadata: Option<TokenMetadata>,
-    //         refund_id: Option<AccountId>,
-    // ) -> Token {
+    pub fn internal_mint2(
+        &mut self,
+        owner_id: AccountId,
+        token_id: u64,
+        supply: Balance,
+        token_metadata: Option<TokenMetadata>,
+        refund_id: Option<AccountId>,
+    ) -> Token {
+        // Remember current storage usage if refund_id is Some
+        let initial_storage_usage = refund_id.map(|account_id| (account_id, env::storage_usage()));
+        let token_str: TokenId = token_id.to_string();
 
-    //     }
+        if token_id >= self.next_token_id {
+            if token_metadata.is_none() {
+                env::panic_str("MUST provide metadata");
+            }
+
+            self.next_approval_id_by_id.insert(&token_str, &0);
+            self.owner_by_id.insert(&token_str, &owner_id);
+            if let Some(metadata) = &token_metadata {
+                self.token_metadata_by_id.insert(&token_str, metadata);
+            }
+        }
+
+        self.total_supply.insert(
+            &token_str,
+            &(self.total_supply.get(&token_str).unwrap_or_default() + supply),
+        );
+
+        let mut balances = self
+            .balances
+            .get(&token_str)
+            .unwrap_or_else(|| LookupMap::new(StorageKey::BalancesInner { token_id }));
+        balances.insert(&owner_id, &(balances.get(&owner_id).unwrap_or(0) + supply));
+        self.balances.insert(&token_str, &balances);
+
+        self.internal_update_token_holders(&token_str, &owner_id);
+
+        // Updates enumeration if extension is used
+        let mut token_ids = self.tokens_per_owner.get(&owner_id).unwrap_or_else(|| {
+            UnorderedSet::new(StorageKey::TokensPerOwner {
+                account_hash: env::sha256(owner_id.as_bytes()),
+            })
+        });
+        token_ids.insert(&token_str);
+        self.tokens_per_owner.insert(&owner_id, &token_ids);
+
+        // // TODO: refunds should be done upper level
+        // if let Some((id, usage)) = initial_storage_usage {
+        //     refund_deposit_to_account(env::storage_usage() - usage, id);
+        // }
+
+        MtMint {
+            owner_id: &owner_id,
+            token_ids: &[&token_str],
+            amounts: &[&supply.to_string()],
+            memo: None,
+        }
+        .emit();
+
+        Token {
+            token_id: token_str,
+            owner_id,
+            supply,
+            metadata: token_metadata,
+        }
+    }
 
     /// Mint a new token without checking:
     /// * Whether the caller id is equal to the `owner_id`
@@ -352,7 +403,8 @@ impl MultiToken {
             env::panic_str("MUST provide metadata");
         }
 
-        let token_id: TokenId = self.next_token_id.to_string();
+        let token_id_num = self.next_token_id;
+        let token_id: TokenId = token_id_num.to_string();
         self.next_token_id += 1;
 
         // If contract uses approval management create new LookupMap for approvals
@@ -376,11 +428,10 @@ impl MultiToken {
         // Insert new balance
         let mut new_balances_per_account: LookupMap<AccountId, u128> =
             LookupMap::new(StorageKey::BalancesInner {
-                token_id: env::sha256(token_id.as_bytes()),
+                token_id: token_id_num,
             });
         new_balances_per_account.insert(&owner_id, &supply);
-        self.balances_per_token
-            .insert(&token_id, &new_balances_per_account);
+        self.balances.insert(&token_id, &new_balances_per_account);
 
         self.internal_update_token_holders(&token_id, &owner_id);
 
@@ -464,10 +515,7 @@ impl MultiToken {
                 token_id: token_id.clone(),
             })
         });
-        let balances = self
-            .balances_per_token
-            .get(token_id)
-            .expect("Token not found");
+        let balances = self.balances.get(token_id).expect("Token not found");
 
         let account_balance = balances.get(account_id).expect("Account not found");
 
@@ -676,10 +724,7 @@ impl MultiToken {
     }
 
     fn internal_balance_of(&self, account_id: &AccountId, token_id: &TokenId) -> U128 {
-        let token_balances_by_user = self
-            .balances_per_token
-            .get(token_id)
-            .expect("Token not found.");
+        let token_balances_by_user = self.balances.get(token_id).expect("Token not found.");
         token_balances_by_user.get(account_id).unwrap_or(0).into()
     }
 
@@ -766,10 +811,7 @@ impl MultiToken {
     ) -> Balance {
         if unused_amount > 0 {
             // Whatever was unused gets returned to the original owner.
-            let mut balances = self
-                .balances_per_token
-                .get(&token_id)
-                .expect("Token not found");
+            let mut balances = self.balances.get(&token_id).expect("Token not found");
             let receiver_balance = balances.get(&receiver).unwrap_or(0);
 
             if receiver_balance > 0 {

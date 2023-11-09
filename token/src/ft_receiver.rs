@@ -1,6 +1,7 @@
 use near_sdk::json_types::U128;
 use near_sdk::{env, ext_contract, near_bindgen, AccountId, PromiseOrValue};
 
+use crate::metadata::TokenMetadata;
 use crate::types::WrappedToken;
 use crate::*;
 
@@ -38,10 +39,10 @@ impl FungibleTokenReceiver for Contract {
         &mut self,
         sender_id: AccountId,
         amount: U128,
-        msg: String,
+        #[allow(unused_variables)] msg: String,
     ) -> PromiseOrValue<U128> {
         let token = env::predecessor_account_id();
-        let gtoken = &(sender_id, token);
+        let gtoken = &(sender_id.clone(), token);
         let b = match self.ft_balances.get(gtoken) {
             Some(b) => b,
             None => {
@@ -57,12 +58,39 @@ impl FungibleTokenReceiver for Contract {
                 balance: b.balance + amount.0,
             },
         );
-        // self.tokens
-        //     .internal_mint(owner_id, supply, metadata, refund_id);
 
-        // TODO: mint grant tokens
-        // TODO: mint event
+        let metadata = mk_metadata(format!("{:?}", gtoken));
+        self.tokens
+            .internal_mint2(sender_id, b.id, amount.0, Some(metadata), None);
+
+        // TODO: mint grant tokens event
 
         PromiseOrValue::Value(0.into())
+    }
+}
+
+#[near_bindgen]
+impl Contract {
+    pub fn unwrap(&mut self, token_id: TokenId, amount: U128) {
+        // TODO
+        //
+        //
+        // step2: check if there is a penalty
+    }
+}
+
+fn mk_metadata(title: String) -> TokenMetadata {
+    TokenMetadata {
+        title: Some(title),
+        description: None,
+        media: None,
+        media_hash: None,
+        issued_at: None,
+        expires_at: None,
+        starts_at: None,
+        updated_at: None,
+        extra: None,
+        reference: None,
+        reference_hash: None,
     }
 }

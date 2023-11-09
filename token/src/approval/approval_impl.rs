@@ -31,7 +31,7 @@ impl MultiTokenApproval for MultiToken {
         for (token_id, amount) in token_ids.iter().zip(&amounts) {
             // Get the balance to check if user has enough tokens
             let approver_balance = self
-                .balances_per_token
+                .balances
                 .get(token_id)
                 .and_then(|balances_per_account| balances_per_account.get(&approver_id))
                 .unwrap_or(0);
