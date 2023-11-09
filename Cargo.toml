@@ -18,9 +18,9 @@ opt-level = "s"
 lto = true
 panic = "abort"
 overflow-checks = true
-debug = false
-debug-assertions = false
-rpath = false
+debug = true
+# debug-assertions = false
+# rpath = false
 
 [workspace.dependencies]
 near-sdk = "^4.1.1"

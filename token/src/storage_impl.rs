@@ -1,10 +1,11 @@
 use crate::core::MultiToken;
+use crate::*;
 // use near_sdk::storage_management::{StorageBalance, StorageBalanceBounds, StorageManagement};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{assert_one_yocto, env, log, require, AccountId, Balance, Promise};
+use near_sdk::{assert_one_yocto, env, log, near_bindgen, require, AccountId, Balance, Promise};
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -107,7 +108,8 @@ impl MultiToken {
 }
 
 // impl StorageManagement for MultiToken {
-impl MultiToken {
+#[near_bindgen]
+impl Contract {
     #[allow(unused_variables)]
     pub fn storage_deposit(
         &mut self,
@@ -116,7 +118,7 @@ impl MultiToken {
     ) -> StorageBalance {
         let amount: Balance = env::attached_deposit();
         let account_id = account_id.unwrap_or_else(env::predecessor_account_id);
-        if self.accounts_storage.contains_key(&account_id) && registration_only.is_some() {
+        if self.tokens.accounts_storage.contains_key(&account_id) && registration_only.is_some() {
             log!("The account is already registered, refunding the deposit");
             if amount > 0 {
                 Promise::new(env::predecessor_account_id()).transfer(amount);
@@ -127,8 +129,9 @@ impl MultiToken {
                 env::panic_str("The attached deposit is less than the minimum storage balance");
             }
 
-            let current_amount = self.accounts_storage.get(&account_id).unwrap_or(0);
-            self.accounts_storage
+            let current_amount = self.tokens.accounts_storage.get(&account_id).unwrap_or(0);
+            self.tokens
+                .accounts_storage
                 .insert(&account_id, &(amount + current_amount));
         }
         self.storage_balance_of(account_id.clone()).unwrap()
@@ -137,20 +140,21 @@ impl MultiToken {
     pub fn storage_withdraw(&mut self, amount: Option<U128>) -> StorageBalance {
         assert_one_yocto();
         let predecessor_account_id = env::predecessor_account_id();
-        let to_withdraw =
-            self.internal_withdraw_near(&predecessor_account_id, amount.map(|a| a.into()));
+        let to_withdraw = self
+            .tokens
+            .internal_withdraw_near(&predecessor_account_id, amount.map(|a| a.into()));
         Promise::new(predecessor_account_id.clone()).transfer(to_withdraw);
         self.storage_balance_of(predecessor_account_id).unwrap()
     }
 
     pub fn storage_unregister(&mut self, force: Option<bool>) -> bool {
-        self.internal_storage_unregister(force).is_some()
+        self.tokens.internal_storage_unregister(force).is_some()
     }
 
     pub fn storage_balance_bounds(&self) -> StorageBalanceBounds {
-        let required_storage_balance = Balance::from(self.account_storage_usage)
+        let required_storage_balance = Balance::from(self.tokens.account_storage_usage)
             * env::storage_byte_cost()
-            + Balance::from(self.storage_usage_per_token) * env::storage_byte_cost();
+            + Balance::from(self.tokens.storage_usage_per_token) * env::storage_byte_cost();
         StorageBalanceBounds {
             min: required_storage_balance.into(),
             // The max amount of storage is unlimited, because we don't know the amount of tokens
@@ -159,12 +163,13 @@ impl MultiToken {
     }
 
     pub fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
-        self.accounts_storage
+        self.tokens
+            .accounts_storage
             .get(&account_id)
             .map(|account_balance| StorageBalance {
                 total: account_balance.into(),
                 available: account_balance
-                    .saturating_sub(self.storage_cost(&account_id))
+                    .saturating_sub(self.tokens.storage_cost(&account_id))
                     .into(),
             })
     }
