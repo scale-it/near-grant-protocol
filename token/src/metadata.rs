@@ -74,7 +74,10 @@ impl TokenMetadata {
 
         require!(self.reference.is_some() == self.reference_hash.is_some());
         if let Some(reference_hash) = &self.reference_hash {
-            require!(reference_hash.len() == 32, "Reference hash has to be 32 bytes");
+            require!(
+                reference_hash.len() == 32,
+                "Reference hash has to be 32 bytes"
+            );
         }
     }
 }

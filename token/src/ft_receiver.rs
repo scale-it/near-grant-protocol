@@ -1,6 +1,7 @@
 use near_sdk::json_types::U128;
-use near_sdk::{env, ext_contract, near_bindgen, AccountId, PromiseOrValue};
+use near_sdk::{env, ext_contract, near_bindgen, AccountId, PromiseOrValue, ONE_YOCTO};
 
+use crate::ext::ext_ft;
 use crate::metadata::TokenMetadata;
 use crate::types::WrappedToken;
 use crate::*;
@@ -71,10 +72,38 @@ impl FungibleTokenReceiver for Contract {
 
 #[near_bindgen]
 impl Contract {
-    pub fn unwrap(&mut self, token_id: TokenId, amount: U128) {
-        // TODO
-        //
-        //
+    pub fn unwrap(&mut self, token_id: TokenId, amount: u128) {
+        // check if caller has tokens
+        let caller = env::predecessor_account_id();
+        self.tokens.internal_withdraw(&token_id, &caller, amount);
+
+        let token_id = token_id.parse::<u64>().expect("incorrect token id");
+        let gtoken = self
+            .gtokens
+            .get(&token_id)
+            .expect("grant token does not exist");
+
+        let old_ft_balance = self
+            .ft_balances
+            .get(&gtoken)
+            .expect("token wrapped token does not exist");
+
+        self.ft_balances.insert(
+            &gtoken,
+            &WrappedToken {
+                id: old_ft_balance.id,
+                balance: old_ft_balance.balance - amount,
+            },
+        );
+
+        ext_ft::ext(gtoken.1)
+            .with_attached_deposit(ONE_YOCTO)
+            .ft_transfer(
+                caller.clone(),
+                near_sdk::json_types::U128::from(amount),
+                None,
+            );
+
         // step2: check if there is a penalty
     }
 }

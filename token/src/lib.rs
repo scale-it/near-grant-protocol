@@ -1,4 +1,4 @@
-use core::{MultiToken, MultiTokenCore, StorageKey};
+use crate::core::{MultiToken, MultiTokenCore, StorageKey};
 
 use enumeration::MultiTokenEnumeration;
 use metadata::MtContractMetadata;
@@ -15,6 +15,7 @@ pub mod core;
 pub mod enumeration;
 pub mod event_core;
 pub mod events;
+pub mod ext;
 pub mod ft_receiver;
 pub mod metadata;
 pub mod storage_impl;
@@ -30,10 +31,10 @@ pub struct Contract {
     metadata: LazyOption<MtContractMetadata>,
 
     // TODO: add check how much GRANT tokens are locked to represent claims.
-    /// ft_balances: (issuer, tokenID) => (mapped tokenID wrapped balance)
+    /// ft_balances: (issuer, ft contract) => (mapped tokenID wrapped balance)
     pub ft_balances: LookupMap<(AccountId, AccountId), WrappedToken>,
 
-    /// revers map from TokenId => (issuer, token)
+    /// revers map from TokenId => (issuer, ft contract)
     pub gtokens: LookupMap<u64, (AccountId, AccountId)>,
 }
 
