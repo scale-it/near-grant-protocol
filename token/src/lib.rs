@@ -18,6 +18,7 @@ pub mod events;
 pub mod ext;
 pub mod ft_receiver;
 pub mod metadata;
+pub mod migration;
 pub mod storage_impl;
 pub mod token;
 pub mod token_holders;

@@ -110,6 +110,7 @@ impl MultiToken {
 // impl StorageManagement for MultiToken {
 #[near_bindgen]
 impl Contract {
+    #[payable]
     #[allow(unused_variables)]
     pub fn storage_deposit(
         &mut self,
