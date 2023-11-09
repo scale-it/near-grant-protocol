@@ -1,11 +1,13 @@
 use core::{MultiToken, MultiTokenCore, StorageKey};
 
+use enumeration::MultiTokenEnumeration;
 use metadata::MtContractMetadata;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{near_bindgen, AccountId, PanicOnDefault, PromiseOrValue};
 use token::{Token, TokenId};
+use token_holders::MultiTokenHolders;
 
 pub mod approval;
 pub mod core;
@@ -131,5 +133,49 @@ impl MultiTokenCore for Contract {
 
     fn mt_batch_supply(&self, token_ids: Vec<TokenId>) -> Vec<Option<U128>> {
         self.tokens.mt_batch_supply(token_ids)
+    }
+}
+
+impl MultiTokenEnumeration for Contract {
+    /// Get a list of all tokens (with pagination)
+    ///
+    /// # Arguments:
+    /// * `from_index` - Index to start from, defaults to 0 if not provided
+    /// * `limit` - The maximum number of tokens to return
+    ///
+    /// returns: List of [Token]s.
+    ///
+    fn mt_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token> {
+        self.tokens.mt_tokens(from_index, limit)
+    }
+
+    /// Get list of all tokens by a given account
+    ///
+    /// # Arguments:
+    /// * `account_id`: a valid NEAR account
+    /// * `from_index` - Index to start from, defaults to 0 if not provided
+    /// * `limit` - The maximum number of tokens to return
+    ///
+    /// returns: List of [Token]s owner by user
+    ///
+    fn mt_tokens_for_owner(
+        &self,
+        account_id: AccountId,
+        from_index: Option<U128>,
+        limit: Option<u64>,
+    ) -> Vec<Token> {
+        self.tokens
+            .mt_tokens_for_owner(account_id, from_index, limit)
+    }
+}
+
+impl MultiTokenHolders for Contract {
+    fn mt_token_holders(
+        &self,
+        token_id: TokenId,
+        from_index: Option<U128>,
+        limit: Option<u64>,
+    ) -> Vec<AccountId> {
+        self.tokens.mt_token_holders(token_id, from_index, limit)
     }
 }
