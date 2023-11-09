@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 use storage::{Status, StorageKey};
 
@@ -10,7 +10,7 @@ pub mod storage;
 pub struct Contract {
     /// DAO
     pub authority: AccountId,
-    pub service_providers: LookupMap<AccountId, Status>,
+    pub service_providers: UnorderedMap<AccountId, Status>,
 }
 
 #[near_bindgen]
@@ -19,7 +19,7 @@ impl Contract {
     pub fn new(authority: AccountId) -> Self {
         Self {
             authority,
-            service_providers: LookupMap::new(StorageKey::ServiceProviders),
+            service_providers: UnorderedMap::new(StorageKey::ServiceProviders),
         }
     }
 
@@ -51,6 +51,25 @@ impl Contract {
         self.authority
     }
 
+    pub fn get_whitelist(&self) -> Vec<AccountId> {
+        let mut whitelist = Vec::new();
+        for (acc, status) in self.service_providers.iter() {
+            if status == Status::Whitelisted {
+                whitelist.push(acc);
+            }
+        }
+        whitelist
+    }
+
+    pub fn get_blacklist(&self) -> Vec<AccountId> {
+        let mut blacklist = Vec::new();
+        for (acc, status) in self.service_providers.iter() {
+            if status == Status::Blacklisted {
+                blacklist.push(acc);
+            }
+        }
+        blacklist
+    }
     //
     // Authority Transactions
     //
@@ -291,5 +310,24 @@ mod tests {
         // move alice to blacklist
         ctr.blacklist(vec![alice()]);
         assert_eq!(ctr.account_status(alice()), Some(Status::Blacklisted));
+    }
+
+    #[test]
+    fn get_whitelist() {
+        let (mut ctx, mut ctr) = setup(&authority());
+        ctx.attached_deposit = MILI_NEAR * 10;
+        testing_env!(ctx);
+
+        ctr.whitelist(vec![alice(), bob(), dan()]);
+        assert_eq!(ctr.get_whitelist(), vec![alice(), bob(), dan()]);
+        assert_eq!(ctr.get_blacklist(), vec![]);
+
+        ctr.blacklist(vec![alice(), bob()]);
+        assert_eq!(ctr.get_whitelist(), vec![dan()]);
+        assert_eq!(ctr.get_blacklist(), vec![alice(), bob()]);
+
+        ctr.unlist(vec![alice()]);
+        assert_eq!(ctr.get_whitelist(), vec![dan()]);
+        assert_eq!(ctr.get_blacklist(), vec![bob()]);
     }
 }
