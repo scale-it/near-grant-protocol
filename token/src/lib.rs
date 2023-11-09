@@ -60,6 +60,7 @@ impl Contract {
     }
 }
 
+#[near_bindgen]
 impl MultiTokenCore for Contract {
     fn mt_transfer(
         &mut self,
@@ -136,6 +137,7 @@ impl MultiTokenCore for Contract {
     }
 }
 
+#[near_bindgen]
 impl MultiTokenEnumeration for Contract {
     /// Get a list of all tokens (with pagination)
     ///
@@ -169,6 +171,7 @@ impl MultiTokenEnumeration for Contract {
     }
 }
 
+#[near_bindgen]
 impl MultiTokenHolders for Contract {
     fn mt_token_holders(
         &self,

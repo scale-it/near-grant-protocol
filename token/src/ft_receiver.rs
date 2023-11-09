@@ -31,6 +31,7 @@ pub trait FungibleTokenReceiver {
     ) -> PromiseOrValue<U128>;
 }
 
+#[near_bindgen]
 impl FungibleTokenReceiver for MultiToken {
     fn ft_on_transfer(
         &mut self,
