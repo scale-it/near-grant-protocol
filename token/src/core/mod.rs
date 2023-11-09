@@ -3,6 +3,7 @@
 */
 
 mod core_impl;
+mod ft_receiver;
 mod receiver;
 mod resolver;
 

@@ -2,7 +2,7 @@
 resolver = "1"
 members = [
     "registry",
-    # "token",
+    "token",
 ]
 
 [workspace.package]

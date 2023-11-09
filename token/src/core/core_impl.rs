@@ -72,6 +72,10 @@ pub struct MultiToken {
 
     /// Token holders with positive balance per token
     pub holders_per_token: Option<UnorderedMap<TokenId, UnorderedSet<AccountId>>>,
+
+    // TODO: add check how much GRANT tokens are locked to represent claims.
+    /// ft_balances : (issuer, )
+    pub ft_balances: LookupMap<(AccountId, AccountId), u128>,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -90,6 +94,8 @@ pub enum StorageKey {
     Balances,
     BalancesInner { token_id: Vec<u8> },
     TokenHoldersInner { token_id: TokenId },
+
+    FTBalances,
 }
 
 impl MultiToken {
@@ -134,6 +140,7 @@ impl MultiToken {
             account_storage_usage: 0,
             storage_usage_per_token: 0,
             holders_per_token: token_holders_prefix.map(UnorderedMap::new),
+            ft_balances: LookupMap::new(StorageKey::FTBalances),
         };
 
         this.measure_min_account_storage_cost();
