@@ -6,10 +6,7 @@ use crate::approval::receiver::ext_approval_receiver;
 use crate::{
     core::MultiToken,
     token::{Approval, TokenId},
-    utils::{
-        bytes_for_approved_account_id, expect_approval, expect_approval_for_token, refund_deposit,
-        Entity,
-    },
+    utils::{bytes_for_approved_account_id, expect_approval_for_token, refund_deposit},
 };
 
 use super::MultiTokenApproval;
@@ -26,13 +23,6 @@ impl MultiTokenApproval for MultiToken {
         msg: Option<String>,
     ) -> Option<Promise> {
         let approver_id = env::predecessor_account_id();
-
-        // Unwrap to check if approval supported
-        let by_token = expect_approval(self.approvals_by_token_id.as_mut(), Entity::Contract);
-
-        // Get some IDs and check if approval management supported both for contract & token
-        let next_id_by_token =
-            expect_approval(self.next_approval_id_by_id.as_mut(), Entity::Contract);
 
         let mut new_approval_ids: Vec<u64> = Vec::new();
 
@@ -52,7 +42,7 @@ impl MultiTokenApproval for MultiToken {
 
             // Get the next approval id for the token
             let new_approval_id: u64 =
-                expect_approval_for_token(next_id_by_token.get(token_id), token_id);
+                expect_approval_for_token(self.next_approval_id_by_id.get(token_id), token_id);
             let new_approval = Approval {
                 amount: amount.0,
                 approval_id: new_approval_id,
@@ -60,7 +50,7 @@ impl MultiTokenApproval for MultiToken {
             log!("New approval: {:?}", new_approval);
 
             // Get existing approvals for this token. If one exists for the grantee_id, overwrite it.
-            let mut by_owner = by_token.get(token_id).unwrap_or_default();
+            let mut by_owner = self.approvals_by_token_id.get(token_id).unwrap_or_default();
             let by_grantee = by_owner.get(&approver_id);
             let mut grantee_to_approval = if let Some(by_grantee) = by_grantee {
                 by_grantee.clone()
@@ -70,8 +60,9 @@ impl MultiTokenApproval for MultiToken {
 
             let old_approval_id = grantee_to_approval.insert(grantee_id.clone(), new_approval);
             by_owner.insert(approver_id.clone(), grantee_to_approval);
-            by_token.insert(token_id, &by_owner);
-            next_id_by_token.insert(token_id, &(new_approval_id + 1));
+            self.approvals_by_token_id.insert(token_id, &by_owner);
+            self.next_approval_id_by_id
+                .insert(token_id, &(new_approval_id + 1));
 
             new_approval_ids.push(new_approval_id);
 
@@ -103,12 +94,10 @@ impl MultiTokenApproval for MultiToken {
         assert_one_yocto();
         let owner_id = env::predecessor_account_id();
 
-        // Get all approvals for token, will panic if approval extension is not used for contract or token
-        let by_token = expect_approval(self.approvals_by_token_id.as_mut(), Entity::Contract);
-
         for token_id in token_ids.iter() {
             // Remove approval for user & also clean maps to save space it it's empty
-            let mut by_owner = expect_approval_for_token(by_token.get(token_id), token_id);
+            let mut by_owner =
+                expect_approval_for_token(self.approvals_by_token_id.get(token_id), token_id);
             let by_grantee = by_owner.get_mut(&owner_id);
 
             if let Some(grantee_to_approval) = by_grantee {
@@ -120,7 +109,7 @@ impl MultiTokenApproval for MultiToken {
             }
 
             if by_owner.is_empty() {
-                by_token.remove(token_id);
+                self.approvals_by_token_id.remove(token_id);
             }
         }
     }
@@ -128,14 +117,11 @@ impl MultiTokenApproval for MultiToken {
     fn mt_revoke_all(&mut self, token_ids: Vec<TokenId>) {
         assert_one_yocto();
         let owner_id = env::predecessor_account_id();
-
-        // Get all approvals for token, will panic if approval extension is not used for contract or token
-        let by_token = expect_approval(self.approvals_by_token_id.as_mut(), Entity::Contract);
-
         for token_id in token_ids.iter() {
-            let mut by_owner = expect_approval_for_token(by_token.get(token_id), token_id);
+            let mut by_owner =
+                expect_approval_for_token(self.approvals_by_token_id.get(token_id), token_id);
             by_owner.remove(&owner_id);
-            by_token.insert(token_id, &by_owner);
+            self.approvals_by_token_id.insert(token_id, &by_owner);
         }
     }
 
@@ -153,10 +139,8 @@ impl MultiTokenApproval for MultiToken {
             "token_ids and approval_ids must have equal size"
         );
 
-        let by_token = expect_approval(self.approvals_by_token_id.as_ref(), Entity::Contract);
-
         for (idx, (token_id, amount)) in token_ids.iter().zip(amounts).enumerate() {
-            let by_owner = by_token.get(token_id).unwrap_or_default();
+            let by_owner = self.approvals_by_token_id.get(token_id).unwrap_or_default();
 
             let approval = match by_owner
                 .get(&owner_id)

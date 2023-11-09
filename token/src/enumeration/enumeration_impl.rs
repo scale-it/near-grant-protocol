@@ -10,10 +10,7 @@ use super::MultiTokenEnumeration;
 
 impl MultiToken {
     fn enum_get_token(&self, owner_id: AccountId, token_id: TokenId) -> Token {
-        let metadata = self
-            .token_metadata_by_id
-            .as_ref()
-            .and_then(|m| m.get(&token_id));
+        let metadata = self.token_metadata_by_id.get(&token_id);
         let supply = self
             .total_supply
             .get(&token_id)
@@ -52,11 +49,7 @@ impl MultiTokenEnumeration for MultiToken {
         from_index: Option<U128>,
         limit: Option<u64>,
     ) -> Vec<Token> {
-        let tokens_per_owner = self
-            .tokens_per_owner
-            .as_ref()
-            .expect("Could not find field");
-        let token_set = if let Some(set) = tokens_per_owner.get(&account_id) {
+        let token_set = if let Some(set) = self.tokens_per_owner.get(&account_id) {
             set
         } else {
             return vec![];
