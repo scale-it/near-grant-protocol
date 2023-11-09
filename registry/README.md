@@ -12,6 +12,8 @@ Registry to keep track of accounts status for the `grant token`. We divide the a
 - `is_blacklisted(account: AccountId) -> bool`
 - `account_status(account: AccountId) -> Status`
 - `authority() -> AccountId`
+- `get_whitelist() -> Vec<AccountId>`
+- `get_blacklist() -> Vec<AccountId>`
 
 ## Authority Transactions
 
