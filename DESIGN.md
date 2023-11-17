@@ -1,11 +1,8 @@
-# near-grant-protocol
-### Hackathon idea
-
 # GRANT, a Circular Economy Token for the Near Ecosystem
 
 ***Date: Oct 24, 2023***
 
-***Author: KazanderDad***
+***Author: KazanderDad, Robert Zaremba***
 
 ***Also available as a [Google Docs](https://docs.google.com/document/d/15tJIha_76frcSC1zgPJlAFzVcysSzVJ2e05M226nMaA/edit?usp=sharing) and [on HackMD](https://hackmd.io/@Kazander/Hk1Q0b5ma)***
 
