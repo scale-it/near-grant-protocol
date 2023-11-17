@@ -1,5 +1,7 @@
 # NEAR Grant Protocol
 
+This project was initiated during the NEARCon 2023 hackathon. [Submission](https://devpost.com/software/grant-596m4y).
+
 Token used to distribute grants in the ecosystem and incentivize the grant recivers to reinvest withing the ecosystem.
 The grant is first wrapped and packed into the `grant token` and then distributed to the grant recivers. If they want to unwrap the tokens they would only receive 80% of the original value. If they spend it with the verified service providers, they on the other hand can unwrap the 100% of the original value. The difference so lets say the 20% should go back to the grant provider.
 
